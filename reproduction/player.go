@@ -1,9 +1,9 @@
 package reproduction
 
 import (
+	"github.com/massimo-gollo/DASHpher/algo"
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/models"
-	"github.com/sirupsen/logrus"
 	"strings"
 	"time"
 )
@@ -79,18 +79,18 @@ func Stream(mpd models.MPD,
 
 	st := StreamStruct{
 		//global info about reproduction
-		OriginalStreamDuration:  originalStreamDuration,
-		OriginalTotalSegmentMPD: originalTotalSegmentMPD,
-		OriginalUrl:             originalUrl,
-		OriginalSegSize:         originalSingleSegmentDuration,
-		MaxHeightReprIdx:        highestMPDResIndex,
-		MinHeightReprIdx:        lowestMPDRestIndex,
-		BandwidthList:           bandwidthList,
-		Profile:                 mpdProfile,
-		MPD:                     mpd,
-		Codec:                   codec,
-		IsByteRangeMPD:          false,
-		StartTimeReproduction:   &startTimeReproduction,
+		OriginalStreamDuration:     originalStreamDuration,
+		OriginalTotalSegmentMPD:    originalTotalSegmentMPD,
+		OriginalUrl:                originalUrl,
+		OriginalDurationPerSegment: originalSingleSegmentDuration,
+		MaxHeightReprIdx:           highestMPDResIndex,
+		MinHeightReprIdx:           lowestMPDRestIndex,
+		BandwidthList:              bandwidthList,
+		Profile:                    mpdProfile,
+		MPD:                        mpd,
+		Codec:                      codec,
+		IsByteRangeMPD:             false,
+		StartTimeReproduction:      &startTimeReproduction,
 
 		ActualStreamDuration:         actualStreamDuration,
 		ActualTotalSegmentToStream:   actualTotalSegmentToStream,
@@ -107,6 +107,7 @@ func Stream(mpd models.MPD,
 
 		NextSegmentNumber: 0,
 
+		ThroughputList:       []int{},
 		BufferLevel:          0,
 		SegmentDurationTotal: 0,
 		BaseURL:              "",
@@ -130,8 +131,7 @@ func ReproduceSegments(streamStruct *StreamStruct) {
 	//var currentStreamDuration int = 0
 	var stopPlay bool = false
 
-	var waitToPlayerCounter int = 0
-	_ = waitToPlayerCounter
+	var waitToPlayCounter = 0
 
 	//iterate over all segment to reproduce
 	for streamStruct.CurrentSegmentInReproduction <= streamStruct.ActualTotalSegmentToStream {
@@ -146,11 +146,12 @@ func ReproduceSegments(streamStruct *StreamStruct) {
 			currentTime := time.Now()
 			switch streamStruct.AdaptionAlgorithm {
 			case constant.ConventionalAlg:
-				err := models.GetFile(streamStruct.OriginalUrl, streamStruct.CurrentURLSegToStream, streamStruct.MapSegmentInfo[segNum], streamStruct.OriginalSegSize)
+				err := models.GetFile(streamStruct.OriginalUrl, streamStruct.CurrentURLSegToStream, streamStruct.MapSegmentInfo[segNum], streamStruct.OriginalDurationPerSegment)
 				if err != nil {
-					logrus.Fatalf("Error getting segment %d with error: %s", segNum, err.Error())
+					logger.Fatalf("Error getting segment %d with error: %s", segNum, err.Error())
 				}
-				logrus.Infof("Downloaded seg #%d with RTT %d", segNum, streamStruct.MapSegmentInfo[segNum].NetDetails.RTT2FirstByte)
+				streamStruct.CurrentSegSize = streamStruct.MapSegmentInfo[segNum].SegmentSize
+				logger.Infof("Downloaded seg #%d with RTT %d", segNum, streamStruct.MapSegmentInfo[segNum].NetDetails.RTT2FirstByte)
 			}
 
 			//compute ArrTime and DeliveryTime - useless compute but i trust in godash
@@ -160,6 +161,17 @@ func ReproduceSegments(streamStruct *StreamStruct) {
 			//thisRunTimeVal := int(time.Since(nextRunTime).Nanoseconds() / (glob.Conversion1000 * glob.Conversion1000))
 
 			_, _ = arrTime, deliveryTime
+
+			// init PlayerCounter > init Buffer - downloaded segment > init buffer (minimum segment before play) so playout
+			//TODO
+			if streamStruct.InitBuffer <= waitToPlayCounter {
+
+			} else {
+				//in queue we don't have enough segment (init buffer min segment) so increse buffer level of another seg duration and queue another seg
+				// add to the current buffer before we start to play
+				streamStruct.BufferLevel += streamStruct.OriginalDurationPerSegment
+				waitToPlayCounter++
+			}
 
 			// check if the buffer level is higher than the max buffer
 			if sleepTime := streamStruct.BufferLevel - streamStruct.MaxBuffer*1000; sleepTime > 0 {
@@ -171,10 +183,15 @@ func ReproduceSegments(streamStruct *StreamStruct) {
 				streamStruct.BufferLevel -= sleepTime
 			}
 
+			streamStruct.SegmentDurationTotal += streamStruct.SegmentDurationTotal
+
+			throughput := algo.CalculateThroughput(streamStruct.CurrentSegSize, deliveryTime)
+			_ = throughput
+
 			//Pass to next Segment
 			streamStruct.CurrentSegmentInReproduction++
 		}
 	}
-	logrus.Infoln("Ending reproduction")
+	logger.Infoln("Ending reproduction")
 
 }

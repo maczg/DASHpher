@@ -7,10 +7,11 @@ import (
 
 type StreamStruct struct {
 	//Original MPD info plus copy of mpd
-	OriginalStreamDuration       int
-	OriginalTotalSegmentMPD      int
-	OriginalUrl                  string
-	OriginalSegSize              int
+	OriginalStreamDuration  int
+	OriginalTotalSegmentMPD int
+	OriginalUrl             string
+	//Unit duration of segment in seconds
+	OriginalDurationPerSegment   int
 	MaxHeightReprIdx             int
 	MinHeightReprIdx             int
 	BandwidthList                []int
@@ -35,7 +36,9 @@ type StreamStruct struct {
 	CurrentSegmentInReproduction int
 	CurrentHeightReprIdx         int
 	CurrentBandwidth             int
+	CurrentSegSize               int
 	NextSegmentNumber            int
+	ThroughputList               []int
 
 	BufferLevel    int
 	MapSegmentInfo map[int]*models.SegmentInfo
