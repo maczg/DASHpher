@@ -3,7 +3,6 @@ package reproduction
 import (
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/models"
-	"github.com/massimo-gollo/DASHpher/utils"
 	"github.com/sirupsen/logrus"
 	"strings"
 	"time"
@@ -65,12 +64,12 @@ func Stream(mpd models.MPD,
 
 	//get initfile.mp4 at lowest rate
 	initUrl := mpd.GetFullStreamHeader(0, currentRepRate, false, false)
-	targetUrl := utils.JoinURL(originalUrl, initUrl)
+	targetUrl := models.JoinURL(originalUrl, initUrl)
 
 	//GETFILE adapt algoritm
 	switch adaptiveAlgorithm {
 	case constant.ConventionalAlg:
-		err = utils.GetFile(originalUrl, targetUrl, segmentInfo[0], originalSingleSegmentDuration)
+		err = models.GetFile(originalUrl, targetUrl, segmentInfo[0], originalSingleSegmentDuration)
 		if err != nil {
 			return err
 		}
@@ -78,7 +77,7 @@ func Stream(mpd models.MPD,
 	//we have saved initSegment info, let's start with other segments from 1 to..
 	currentSegment++
 
-	st := models.StreamStruct{
+	st := StreamStruct{
 		//global info about reproduction
 		OriginalStreamDuration:  originalStreamDuration,
 		OriginalTotalSegmentMPD: originalTotalSegmentMPD,
@@ -119,13 +118,13 @@ func Stream(mpd models.MPD,
 
 	endrep := time.Since(startTimeReproduction)
 
-	logrus.Infof("[REQ#%d] Total duration reproduction %s", nreq, endrep.String())
+	logger.Infof("[REQ#%d] Total duration reproduction %s", nreq, endrep.String())
 
 	//TODO return metrics?
 	return nil
 }
 
-func ReproduceSegments(streamStruct *models.StreamStruct) {
+func ReproduceSegments(streamStruct *StreamStruct) {
 
 	//current milliseconds
 	//var currentStreamDuration int = 0
@@ -135,7 +134,8 @@ func ReproduceSegments(streamStruct *models.StreamStruct) {
 	_ = waitToPlayerCounter
 
 	//iterate over all segment to reproduce
-	for segNum := streamStruct.CurrentSegmentInReproduction; segNum <= streamStruct.ActualTotalSegmentToStream; {
+	for streamStruct.CurrentSegmentInReproduction <= streamStruct.ActualTotalSegmentToStream {
+		segNum := streamStruct.CurrentSegmentInReproduction
 		if !stopPlay {
 			streamStruct.MapSegmentInfo[segNum] = models.NewSegmentInfo()
 			streamStruct.MapSegmentInfo[segNum].SegmentIndex = segNum
@@ -146,11 +146,11 @@ func ReproduceSegments(streamStruct *models.StreamStruct) {
 			currentTime := time.Now()
 			switch streamStruct.AdaptionAlgorithm {
 			case constant.ConventionalAlg:
-				err := utils.GetFile(streamStruct.OriginalUrl, streamStruct.CurrentURLSegToStream, streamStruct.MapSegmentInfo[segNum], streamStruct.OriginalSegSize)
+				err := models.GetFile(streamStruct.OriginalUrl, streamStruct.CurrentURLSegToStream, streamStruct.MapSegmentInfo[segNum], streamStruct.OriginalSegSize)
 				if err != nil {
 					logrus.Fatalf("Error getting segment %d with error: %s", segNum, err.Error())
 				}
-				//	logrus.Infof("Downloaded seg #%d with RTT %d", segNum, streamStruct.MapSegmentInfo[segNum].NetDetails.RTT2FirstByte)
+				logrus.Infof("Downloaded seg #%d with RTT %d", segNum, streamStruct.MapSegmentInfo[segNum].NetDetails.RTT2FirstByte)
 			}
 
 			//compute ArrTime and DeliveryTime - useless compute but i trust in godash

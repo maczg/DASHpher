@@ -1,9 +1,8 @@
-package utils
+package models
 
 import (
 	"encoding/xml"
 	"errors"
-	"github.com/massimo-gollo/DASHpher/models"
 	"github.com/massimo-gollo/DASHpher/network"
 	"io/ioutil"
 	"net/http"
@@ -11,7 +10,10 @@ import (
 	"strings"
 )
 
-func ParseMPDFrom(mpdBody *[]byte) (mpd *models.MPD, err error) {
+//TODO requestMetadata - cool if we can store metrics about each request
+// see httptrace.ClientTrace
+
+func ParseMPDFrom(mpdBody *[]byte) (mpd *MPD, err error) {
 	//extract everything from the file read in bytes to the structures
 	if err = xml.Unmarshal(*mpdBody, &mpd); err != nil {
 		return nil, err
@@ -19,11 +21,8 @@ func ParseMPDFrom(mpdBody *[]byte) (mpd *models.MPD, err error) {
 	return mpd, nil
 }
 
-//TODO requestMetadata - cool if we can store metrics about each request
-// see httptrace.ClientTrace
-
 //GetMPDFrom - get mpd from requested url
-func GetMPDFrom(requestedUrl string) (mpd *models.MPD, requestMetadata interface{}, err error) {
+func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata interface{}, err error) {
 	//Get Custom http client - ulimit timeouts
 	client := network.NewCustomHttp()
 

@@ -1,6 +1,9 @@
-package models
+package reproduction
 
-import "time"
+import (
+	"github.com/massimo-gollo/DASHpher/models"
+	"time"
+)
 
 type StreamStruct struct {
 	//Original MPD info plus copy of mpd
@@ -12,7 +15,7 @@ type StreamStruct struct {
 	MinHeightReprIdx             int
 	BandwidthList                []int
 	Profile                      string
-	MPD                          MPD
+	MPD                          models.MPD
 	Codec                        string
 	IsByteRangeMPD               bool
 	StartTimeReproduction        *time.Time
@@ -35,7 +38,7 @@ type StreamStruct struct {
 	NextSegmentNumber            int
 
 	BufferLevel    int
-	MapSegmentInfo map[int]*SegmentInfo
+	MapSegmentInfo map[int]*models.SegmentInfo
 
 	MimeTypes []int
 
