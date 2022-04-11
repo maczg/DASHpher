@@ -3,11 +3,14 @@ package models
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"github.com/massimo-gollo/DASHpher/network"
 	"io/ioutil"
 	"net/http"
+	"net/http/httptrace"
 	"path"
 	"strings"
+	"time"
 )
 
 //TODO requestMetadata - cool if we can store metrics about each request
@@ -22,42 +25,47 @@ func ParseMPDFrom(mpdBody *[]byte) (mpd *MPD, err error) {
 }
 
 //GetMPDFrom - get mpd from requested url
-func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata interface{}, err error) {
-	//Get Custom http client - ulimit timeouts
-	client := network.NewCustomHttp()
+func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMetadata, err error) {
 
 	url := strings.TrimSpace(requestedUrl)
+	//Get Custom http client - ulimit timeouts
+	client := network.NewCustomHttp()
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, nil, err
 	}
+
+	var startTime time.Time
+
+	fetchingInfo := network.FileMetadata{}
+	tracer := network.GetTraceRequestFile(&fetchingInfo, &startTime)
+	clientTraceCtx := httptrace.WithClientTrace(req.Context(), tracer)
+	req = req.WithContext(clientTraceCtx)
+
+	startTime = time.Now()
 	resp, err := client.Do(req)
 
-	if err != nil {
-		return nil, nil, err
+	if not200 := resp.StatusCode != http.StatusOK; err != nil || not200 {
+		if not200 {
+			s := fmt.Sprintf("Status code: %s", resp.Status)
+			return nil, &fetchingInfo, errors.New(s)
+		}
+		return nil, &fetchingInfo, err
 	}
+	defer resp.Body.Close()
 
-	if resp == nil || resp.StatusCode != http.StatusOK {
-		return nil, nil, errors.New("can't get response or status code not OK")
-	}
 	//Resolve MPD
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		return nil, nil, err
+		return nil, &fetchingInfo, err
 	}
 	mpd, err = ParseMPDFrom(&body)
 	if err != nil {
-		return nil, nil, err
+		return nil, &fetchingInfo, err
 	}
 
-	defer func() {
-		if resp != nil {
-			resp.Body.Close()
-		}
-	}()
-
-	return mpd, nil, nil
+	return mpd, &fetchingInfo, nil
 }
 
 // JoinURL

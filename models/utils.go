@@ -190,9 +190,9 @@ func (m *MPD) GetReproductionDetails(maxHeight, requestedStreamDuration int) (
 		//we are specifying cap duration, so cap maxDuration
 		actualStreamDuration = requestedStreamDuration
 		if actualStreamDuration%singleSegmentDurationSeconds != 0 {
-			actualTotalSegmentToStream = int(float64(actualStreamDuration)/float64(singleSegmentDurationSeconds*1000) + 1)
+			actualTotalSegmentToStream = int(float64(actualStreamDuration) / float64(singleSegmentDurationSeconds*1000))
 		}
-		actualTotalSegmentToStream = int(float64(actualStreamDuration)/float64(singleSegmentDurationSeconds*1000) + 1)
+		actualTotalSegmentToStream = int(float64(actualStreamDuration) / float64(singleSegmentDurationSeconds*1000))
 	} else {
 		if err != nil {
 			return 0, 0, 0, 0, 0, 0, nil, "", 0, nil
@@ -280,22 +280,22 @@ func GetNextSegUrl(segmentNumber int, mpd MPD, SegQUALITY int) string {
 
 // GetFile provide file from HTTP server
 func GetFile(originalUrl, fileURI string, info *SegmentInfo, segmentDuration int) (err error) {
-	fullUrl := JoinURL(originalUrl, fileURI)
 
+	fullUrl := JoinURL(originalUrl, fileURI)
 	client := network.NewCustomHttp()
 
-	request, err := http.NewRequest("GET", fullUrl, nil)
+	req, err := http.NewRequest("GET", fullUrl, nil)
 	if err != nil {
 		return err
 	}
 	var startTime time.Time
 
 	tracer := network.GetTraceRequestFile(&info.NetDetails, &startTime)
-	clientTraceCtx := httptrace.WithClientTrace(request.Context(), tracer)
-	request = request.WithContext(clientTraceCtx)
+	clientTraceCtx := httptrace.WithClientTrace(req.Context(), tracer)
+	req = req.WithContext(clientTraceCtx)
 
 	startTime = time.Now()
-	resp, err := client.Do(request)
+	resp, err := client.Do(req)
 
 	if not200 := resp.StatusCode != http.StatusOK; err != nil || not200 {
 		if not200 {

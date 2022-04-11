@@ -4,194 +4,243 @@ import (
 	"github.com/massimo-gollo/DASHpher/algo"
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/models"
+	"github.com/massimo-gollo/DASHpher/utils"
+	"github.com/sirupsen/logrus"
 	"strings"
 	"time"
 )
 
-func Stream(mpd models.MPD,
-	codec, adaptiveAlgorithm, originalUrl string,
-	maxHeight, streamDuration, maxNumBufferSeg, initNumBufferSeg, streamBuffer int, nreq uint64) (err error) {
+func EndWithErr(metrics *models.ReproductionMetrics, t *time.Time, e error) (err error) {
+	metrics.ReprEndTime = time.Now()
+	metrics.CompletedWithError = true
+	metrics.CompleteWithSuccess = false
+	metrics.ReprDuration = time.Since(*t)
+	metrics.LastErrorReason = e.Error()
+	return err
+}
 
-	startTimeReproduction := time.Now()
+func Stream1(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorithm string, maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int, nrequest uint64) (err error) {
+	startTimeExecution := time.Now()
+	urlResource := reproductionDetails.Url
 
-	//NOTICE: Order repr of first adapSet from Highest to lower - goDASH compliant
-	mpd.ReverseRepr(originalUrl)
+	mpd, fetchInfo, err := models.GetMPDFrom(urlResource)
+	if err != nil {
+		//TODO handle properly
+		return EndWithErr(reproductionDetails, &startTimeExecution, err)
+	}
+	reproductionDetails.FetchMpdInfo = *fetchInfo
 
-	//k: segm number v:segmentInfo
-	var segmentInfo map[int]*models.SegmentInfo
+	//TODO - check if MaxBuffer < MBT (minimum buffer time from mpd)
 
-	// MPD INFO
-	var originalStreamDuration int
-	var originalTotalSegmentMPD int
-	var actualStreamDuration int
-	var actualTotalSegmentToStream int
+	//prepare streamInfo - contains parameters of streaming and info about segments
+	//segmentInfo := make(map[int]*models.SegmentInfo)
+	//TODO - check mimetypes and consider multiple adpset - for now assuming only video
 
-	var lowestMPDRestIndex int
-	var highestMPDResIndex int
-	var originalSingleSegmentDuration int
-	var bandwidthList []int
-	var mpdProfile string
+	streamInfo := StreamInfo{
+		UrlResource:       urlResource,
+		MPD:               *mpd,
+		Codec:             codec,
+		AudioContent:      false,
+		IsByteRangeMPD:    false,
+		AdaptionAlgorithm: adaptAlgorithm,
+		//		SegmentInformation: segmentInfo,
 
-	//REPRODUCTION VARIABLES - start with lowestRepRate
-	var currentRepRate int
-	var currentSegment = 0
+		StartTimeReproduction: &startTimeExecution,
+		InitBuffer:            initBuffSeconds,
+		MaxBuffer:             MaxBufferSeconds,
+		MaxReqHeight:          maxHeightRes,
+		//initializer
+		CurrentSegmentInReproduction: 0,
+	}
 
-	//index values for types of MPD types
-	var mimeTypes []int
+	//NOTICE ordering representations adpSet[0] (only one atm) from highest (0) to lower(n-1) - goDASH compliant
+	mpd.ReverseRepr(urlResource)
 
-	var isAudioOnly = false
-	//TODO check if is only audio, assume is VideoCodec
-	_ = isAudioOnly
+	//omitted baseUrl := is for byteRange
+	totalVideoDuration,
+		totalSegmentCount,
+		actualStreamDuration,
+		actualSegmentCount,
+		highestResIndex,
+		lowestResIndex,
+		bandwidthList,
+		_,
+		segmentDuration, err := mpd.GetReproductionDetails(maxHeightRes, requestedStreamDuration)
 
-	// loops over Adpset currently one adaptation set per video and audio
-	//TODO i'm assuming h264 codec only - static 1 adpSet
-	currentAdaptionSetIndex := 0
-	mimeTypes = append(mimeTypes, currentAdaptionSetIndex)
+	if err != nil {
+		return EndWithErr(reproductionDetails, &startTimeExecution, err)
+	}
 
-	//TODO skip check byteRange - assumig it's not ByteRange
-	//get relevant details about current MPD
-	originalStreamDuration, originalTotalSegmentMPD, actualStreamDuration, actualTotalSegmentToStream,
-		highestMPDResIndex, lowestMPDRestIndex, bandwidthList, _, originalSingleSegmentDuration, err = mpd.GetReproductionDetails(maxHeight, streamDuration)
-
-	segmentInfo = make(map[int]*models.SegmentInfo)
-	segmentInfo[currentSegment] = models.NewSegmentInfo()
+	streamInfo.TotalVideoDuration = totalVideoDuration
+	streamInfo.TotalSegmentCount = totalSegmentCount
+	streamInfo.ActualStreamDuration = actualStreamDuration
+	streamInfo.ActualTotalSegmentToStream = actualSegmentCount
+	streamInfo.MaxHeightReprIdx = highestResIndex
+	streamInfo.MinHeightReprIdx = lowestResIndex
+	streamInfo.BandwidthList = bandwidthList
+	streamInfo.SingleSegmentDuration = segmentDuration
 
 	profiles := strings.Split(mpd.Profiles, ":")
-	mpdProfile = profiles[len(profiles)-2]
+	profile := profiles[len(profiles)-2]
+	streamInfo.Profile = profile
+	streamInfo.CurrentRepIdx = highestResIndex
+	streamInfo.MimeTypes = []int{0} //video only - adpset 0
+	streamInfo.ThroughputList = []int{}
 
-	//must set to highest?
-	currentRepRate = lowestMPDRestIndex
+	//GET initializer file - we start at highestRate (usefull if we want evaluate initial repRate)
+	//we are assuming for sure we have 1 adpSet (video only) and is not byterange or audioByteRange
+	initUrl := mpd.GetFullStreamHeader(0, highestResIndex, false, false)
+	target := models.JoinURL(urlResource, initUrl)
 
-	//get initfile.mp4 at lowest rate
-	initUrl := mpd.GetFullStreamHeader(0, currentRepRate, false, false)
-	targetUrl := models.JoinURL(originalUrl, initUrl)
+	//TODO check if we can start with highest res - based on initializers (rep 0 && 1)
 
-	//GETFILE adapt algoritm
-	switch adaptiveAlgorithm {
+	//init struct segment informations
+	//consider segment init as seg 0 in map
+	segmentInfo := make(map[int]*models.SegmentInfo)
+	segmentInfo[0] = models.NewSegmentInfo()
+	streamInfo.SegmentInformation = segmentInfo
+
+	//startTimeDownloading := time.Now()
+	//nextRunTimeDownloading := time.Now()
+	streamInfo.StartTimeDownloading = time.Now()
+	streamInfo.NextRunTimeDownloading = time.Now()
+	streamInfo.WaitToPlayCount = 0
+	//GETFILE adapt algoritm and save info about initializer
+	switch adaptAlgorithm {
 	case constant.ConventionalAlg:
-		err = models.GetFile(originalUrl, targetUrl, segmentInfo[0], originalSingleSegmentDuration)
+		err = models.GetFile(urlResource, target, streamInfo.SegmentInformation[0], segmentDuration)
 		if err != nil {
+			//TODO handle error
 			return err
 		}
 	}
-	//we have saved initSegment info, let's start with other segments from 1 to..
-	currentSegment++
 
-	st := StreamStruct{
-		//global info about reproduction
-		OriginalStreamDuration:     originalStreamDuration,
-		OriginalTotalSegmentMPD:    originalTotalSegmentMPD,
-		OriginalUrl:                originalUrl,
-		OriginalDurationPerSegment: originalSingleSegmentDuration,
-		MaxHeightReprIdx:           highestMPDResIndex,
-		MinHeightReprIdx:           lowestMPDRestIndex,
-		BandwidthList:              bandwidthList,
-		Profile:                    mpdProfile,
-		MPD:                        mpd,
-		Codec:                      codec,
-		IsByteRangeMPD:             false,
-		StartTimeReproduction:      &startTimeReproduction,
+	//all set to init gettin segment -> Reproduce
+	streamInfo.CurrentSegmentInReproduction += 1
+	streamInfo.BufferLevel = 0
+	err = Reproduce(&streamInfo)
 
-		ActualStreamDuration:         actualStreamDuration,
-		ActualTotalSegmentToStream:   actualTotalSegmentToStream,
-		MaxReqHeight:                 maxHeight,
-		InitBuffer:                   initNumBufferSeg,
-		MaxBuffer:                    maxNumBufferSeg,
-		AdaptionAlgorithm:            adaptiveAlgorithm,
-		CurrentSegmentInReproduction: currentSegment,
-		//start with Lower repr - alias RepRate godash
-		CurrentHeightReprIdx: lowestMPDRestIndex,
-		//map with info about all segments
-		MapSegmentInfo: segmentInfo,
-		MimeTypes:      mimeTypes,
-
-		NextSegmentNumber: 0,
-
-		ThroughputList:       []int{},
-		BufferLevel:          0,
-		SegmentDurationTotal: 0,
-		BaseURL:              "",
-		AudioContent:         false,
-		RepRate:              0,
-	}
-
-	ReproduceSegments(&st)
-
-	endrep := time.Since(startTimeReproduction)
-
-	logger.Infof("[REQ#%d] Total duration reproduction %s", nreq, endrep.String())
-
-	//TODO return metrics?
-	return nil
+	logger.Infof("End with duration: %s\n", time.Now().Sub(startTimeExecution).String())
+	return err
 }
 
-func ReproduceSegments(streamStruct *StreamStruct) {
+func Reproduce(si *StreamInfo) (err error) {
 
-	//current milliseconds
-	//var currentStreamDuration int = 0
-	var stopPlay bool = false
+	stopPlay := false
 
-	var waitToPlayCounter = 0
+	var currentSegInfo *models.SegmentInfo
 
-	//iterate over all segment to reproduce
-	for streamStruct.CurrentSegmentInReproduction <= streamStruct.ActualTotalSegmentToStream {
-		segNum := streamStruct.CurrentSegmentInReproduction
+	for si.CurrentSegmentInReproduction <= si.ActualTotalSegmentToStream {
+		segNum := si.CurrentSegmentInReproduction
+
 		if !stopPlay {
-			streamStruct.MapSegmentInfo[segNum] = models.NewSegmentInfo()
-			streamStruct.MapSegmentInfo[segNum].SegmentIndex = segNum
+			/*			si.SegmentInformation[segNum] = models.NewSegmentInfo()
+						si.SegmentInformation[segNum].SegmentIndex = segNum*/
+			si.CurrentURLSegToStream =
+				models.GetNextSegUrl(segNum, si.MPD, si.CurrentRepIdx)
 
-			//GET SegmentUrl
-			streamStruct.CurrentURLSegToStream =
-				models.GetNextSegUrl(streamStruct.CurrentSegmentInReproduction, streamStruct.MPD, streamStruct.CurrentHeightReprIdx)
-			currentTime := time.Now()
-			switch streamStruct.AdaptionAlgorithm {
-			case constant.ConventionalAlg:
-				err := models.GetFile(streamStruct.OriginalUrl, streamStruct.CurrentURLSegToStream, streamStruct.MapSegmentInfo[segNum], streamStruct.OriginalDurationPerSegment)
+			///StartTime for this seg
+			currenTimeCurrentSeg := time.Now()
+			switch si.AdaptionAlgorithm {
+			case "conventional":
+				currentSegInfo = models.NewSegmentInfo()
+				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
+				//	err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, si.SegmentInformation[segNum], si.SingleSegmentDuration)
 				if err != nil {
-					logger.Fatalf("Error getting segment %d with error: %s", segNum, err.Error())
+					stopPlay = true
+					continue
 				}
-				streamStruct.CurrentSegSize = streamStruct.MapSegmentInfo[segNum].SegmentSize
-				logger.Infof("Downloaded seg #%d with RTT %d", segNum, streamStruct.MapSegmentInfo[segNum].NetDetails.RTT2FirstByte)
 			}
 
-			//compute ArrTime and DeliveryTime - useless compute but i trust in godash
-			arrTime := int(time.Since(*streamStruct.StartTimeReproduction).Nanoseconds() / (1000 * 1000))
-			deliveryTime := int(time.Since(currentTime).Nanoseconds() / (1000 * 1000))
-			//Not sure about this
-			//thisRunTimeVal := int(time.Since(nextRunTime).Nanoseconds() / (glob.Conversion1000 * glob.Conversion1000))
+			//SegInfo[num].SegSize settet in GetFile
+			si.CurrentSegSize = currentSegInfo.SegmentSize
 
-			_, _ = arrTime, deliveryTime
+			//compute times
+			arrivalTime := int(time.Since(si.StartTimeDownloading).Nanoseconds() / (1000 * 1000))
+			deliveryTime := int(time.Since(currenTimeCurrentSeg).Nanoseconds() / (1000 * 1000))
+			thisRunTime := int(time.Since(si.NextRunTimeDownloading).Nanoseconds() / (1000 * 1000))
 
-			// init PlayerCounter > init Buffer - downloaded segment > init buffer (minimum segment before play) so playout
-			//TODO
-			if streamStruct.InitBuffer <= waitToPlayCounter {
+			logger.Infof("ArrivalTime: %d DeliveryTime: %d ThisRunTime: %d", arrivalTime, deliveryTime, thisRunTime)
 
+			si.NextRunTimeDownloading = time.Now()
+
+			//we want to wait for an initial number of segments before stream begins
+
+			if si.WaitToPlayCount >= si.InitBuffer {
+				// * print the play_out logs only when the current time is >= play_out time
+				PrintPlayout(arrivalTime, si.InitBuffer, si.SegmentInformation)
+
+				//get current buffer
+				currentBuffer := si.BufferLevel - thisRunTime
+				logger.Infoln("current buffer: ", currentBuffer)
+				if currentBuffer >= 0 {
+					//	si.SegmentInformation[segNum].StallTime = 0
+					currentSegInfo.StallTime = 0
+				} else {
+					/*logger.Infoln("current buffer: ", currentBuffer)*/
+					//si.SegmentInformation[segNum].StallTime = currentBuffer
+					currentSegInfo.StallTime = currentBuffer
+				}
+
+				// To have the bufferLevel we take the max between the remaining buffer and 0, we add the duration of the segment we downloaded
+				si.BufferLevel = utils.Max(si.BufferLevel-thisRunTime, 0) + (si.SingleSegmentDuration * 1000)
+				si.WaitToPlayCount += 1
 			} else {
-				//in queue we don't have enough segment (init buffer min segment) so increse buffer level of another seg duration and queue another seg
 				// add to the current buffer before we start to play
-				streamStruct.BufferLevel += streamStruct.OriginalDurationPerSegment
-				waitToPlayCounter++
+				si.BufferLevel += si.SingleSegmentDuration * 1000
+				// increment the waitToPlayCounter
+				si.WaitToPlayCount += 1
 			}
 
-			// check if the buffer level is higher than the max buffer
-			if sleepTime := streamStruct.BufferLevel - streamStruct.MaxBuffer*1000; sleepTime > 0 {
-				//should sleep a bit
-				// retrieve the time it is going to sleep from the buffer level
-				// sleep until the max buffer level is reached
-				time.Sleep(time.Duration(sleepTime))
-				// reset the buffer to the new value less sleep time - should equal maxBuffer
-				streamStruct.BufferLevel -= sleepTime
+			//compare buffer level (millisec, duration of seg*1000) with MaxBuffer (from sec to millis)
+			if si.BufferLevel > si.MaxBuffer*1000 {
+				//sleep until maxBuffer level is reached
+				sleepTime := si.BufferLevel - si.MaxBuffer*1000
+				logrus.Warningf("Sleep for %s", time.Duration(sleepTime)*time.Millisecond)
+				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+
+				si.BufferLevel -= sleepTime
 			}
+			//notSure yet if we need this - base the play out position on the buffer level
+			currentPlayPosition := si.SegmentDurationTotal + (si.SingleSegmentDuration * 1000) - si.BufferLevel
 
-			streamStruct.SegmentDurationTotal += streamStruct.SegmentDurationTotal
+			logger.Warningf("player position %d \n", currentPlayPosition)
 
-			throughput := algo.CalculateThroughput(streamStruct.CurrentSegSize, deliveryTime)
+			si.SegmentDurationTotal += si.SingleSegmentDuration * 1000
+			//		si.SegmentInformation[segNum].PlayStartPosition = si.SegmentDurationTotal
+			//currentSegInfo.PlayStartPosition = si.SegmentDurationTotal - (si.SingleSegmentDuration * 1000)
+			currentSegInfo.PlayStartPosition = si.SegmentDurationTotal
+			si.SegmentInformation[segNum] = currentSegInfo
+
+			throughput := algo.CalculateThroughput(si.CurrentSegSize, deliveryTime)
 			_ = throughput
 
-			//Pass to next Segment
-			streamStruct.CurrentSegmentInReproduction++
+			//TODO select bitrate and switch if needed && save the bitrate from the input segment (less the header info)
+
+			if si.SegmentDurationTotal > si.ActualStreamDuration {
+				logger.Infoln("Finish Reproduction")
+				stopPlay = true
+			} else {
+				si.CurrentSegmentInReproduction += 1
+			}
+		}
+
+	}
+
+	return err
+}
+
+func PrintPlayout(currentTime, initBuffer int, segInfo map[int]*models.SegmentInfo) {
+	for i, _ := range segInfo {
+		if i == 0 {
+			//skip initializer segment, start from 1
+			continue
+		}
+
+		if currentTime >= (segInfo[i].PlayStartPosition+segInfo[initBuffer].PlayStartPosition) && !segInfo[i].Played {
+			logger.Warningf("passing seg to decoder to playout seg %s", segInfo[i].SegmentFileName)
+			segInfo[i].Played = true
 		}
 	}
-	logger.Infoln("Ending reproduction")
 
 }

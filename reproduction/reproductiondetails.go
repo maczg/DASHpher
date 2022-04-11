@@ -5,13 +5,13 @@ import (
 	"time"
 )
 
-type StreamStruct struct {
+type StreamInfo struct {
 	//Original MPD info plus copy of mpd
-	OriginalStreamDuration  int
-	OriginalTotalSegmentMPD int
-	OriginalUrl             string
+	TotalVideoDuration int
+	TotalSegmentCount  int
+	UrlResource        string
 	//Unit duration of segment in seconds
-	OriginalDurationPerSegment   int
+	SingleSegmentDuration        int
 	MaxHeightReprIdx             int
 	MinHeightReprIdx             int
 	BandwidthList                []int
@@ -22,6 +22,10 @@ type StreamStruct struct {
 	StartTimeReproduction        *time.Time
 	EndTimeReproduction          *time.Time
 	ReproductionCompleteDuration time.Duration
+
+	StartTimeDownloading   time.Time
+	NextRunTimeDownloading time.Time
+	WaitToPlayCount        int
 
 	//Fine-tuned reproduction info
 	ActualStreamDuration       int
@@ -34,16 +38,17 @@ type StreamStruct struct {
 	//Current parameters of streaming
 	CurrentURLSegToStream        string
 	CurrentSegmentInReproduction int
-	CurrentHeightReprIdx         int
+	CurrentRepIdx                int
 	CurrentBandwidth             int
 	CurrentSegSize               int
 	NextSegmentNumber            int
 	ThroughputList               []int
 
-	BufferLevel    int
-	MapSegmentInfo map[int]*models.SegmentInfo
-
-	MimeTypes []int
+	BufferLevel int
+	//we consider only one adp set. If we want consider also audio or other adset
+	// should take into account to change in []map[int]...
+	SegmentInformation map[int]*models.SegmentInfo
+	MimeTypes          []int
 
 	//	NextRunTime           time.Time
 	//ArrivalTime           int
