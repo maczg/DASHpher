@@ -184,20 +184,19 @@ func (m *MPD) GetReproductionDetails(maxHeight, requestedStreamDuration int) (
 	//TODO skip - GetDetails in ByteRange format
 	originalTotalSegmentMPD, singleSegmentDurationSeconds, err = m.GetSegmentDetails()
 	lastSegDuration, err := m.ParseDurationOf(m.MaxSegmentDuration)
+	if err != nil {
+		return 0, 0, 0, 0, 0, 0, nil, "", 0, nil
+	}
 	originalStreamDuration = ((singleSegmentDurationSeconds * (originalTotalSegmentMPD - 1)) + (*lastSegDuration)) * 10000
 	//compute cap duration
 	if requestedStreamDuration != 0 {
 		//we are specifying cap duration, so cap maxDuration
 		actualStreamDuration = requestedStreamDuration
-		if actualStreamDuration%singleSegmentDurationSeconds != 0 {
-			actualTotalSegmentToStream = int(float64(actualStreamDuration) / float64(singleSegmentDurationSeconds*1000))
-		}
 		actualTotalSegmentToStream = int(float64(actualStreamDuration) / float64(singleSegmentDurationSeconds*1000))
-	} else {
-		if err != nil {
-			return 0, 0, 0, 0, 0, 0, nil, "", 0, nil
+		if actualStreamDuration%(singleSegmentDurationSeconds*1000) != 0 {
+			actualTotalSegmentToStream += 1
 		}
-
+	} else {
 		actualStreamDuration = originalStreamDuration
 		actualTotalSegmentToStream = originalTotalSegmentMPD
 	}

@@ -10,7 +10,7 @@ type ReproductionMetrics struct {
 	Url          string
 	FetchMpdInfo network.FileMetadata
 	MPD          MPD
-	//SegmentsInfo  []map[int]SegmentInfo
+	SegmentsInfo map[int]SegmentInfo
 
 	ReprStartTime time.Time
 	ReprEndTime   time.Time
@@ -21,4 +21,8 @@ type ReproductionMetrics struct {
 	ErrorCount          int
 	SegmentErrorCount   int
 	LastErrorReason     string
+}
+
+func NewReproductionMetrics() *ReproductionMetrics {
+	return &ReproductionMetrics{SegmentsInfo: make(map[int]SegmentInfo)}
 }

@@ -5,7 +5,6 @@ import (
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/models"
 	"github.com/massimo-gollo/DASHpher/utils"
-	"github.com/sirupsen/logrus"
 	"strings"
 	"time"
 )
@@ -19,7 +18,7 @@ func EndWithErr(metrics *models.ReproductionMetrics, t *time.Time, e error) (err
 	return err
 }
 
-func Stream1(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorithm string, maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int, nrequest uint64) (err error) {
+func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorithm string, maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int, nrequest uint64) (err error) {
 	startTimeExecution := time.Now()
 	urlResource := reproductionDetails.Url
 
@@ -118,13 +117,15 @@ func Stream1(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgori
 	//all set to init gettin segment -> Reproduce
 	streamInfo.CurrentSegmentInReproduction += 1
 	streamInfo.BufferLevel = 0
-	err = Reproduce(&streamInfo)
 
-	logger.Infof("End with duration: %s\n", time.Now().Sub(startTimeExecution).String())
+	reproductionDetails.SegmentsInfo[0] = *segmentInfo[0]
+
+	err = Reproduce(&streamInfo, nrequest, reproductionDetails)
+
 	return err
 }
 
-func Reproduce(si *StreamInfo) (err error) {
+func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetrics) (err error) {
 
 	stopPlay := false
 
@@ -134,8 +135,6 @@ func Reproduce(si *StreamInfo) (err error) {
 		segNum := si.CurrentSegmentInReproduction
 
 		if !stopPlay {
-			/*			si.SegmentInformation[segNum] = models.NewSegmentInfo()
-						si.SegmentInformation[segNum].SegmentIndex = segNum*/
 			si.CurrentURLSegToStream =
 				models.GetNextSegUrl(segNum, si.MPD, si.CurrentRepIdx)
 
@@ -145,9 +144,11 @@ func Reproduce(si *StreamInfo) (err error) {
 			case "conventional":
 				currentSegInfo = models.NewSegmentInfo()
 				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
-				//	err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, si.SegmentInformation[segNum], si.SingleSegmentDuration)
 				if err != nil {
-					stopPlay = true
+					//TODO Retry?
+					logger.Errorf("[Req#%d] Error getting segment %d", nreq, si.CurrentSegmentInReproduction)
+					currentSegInfo.Played = false
+
 					continue
 				}
 			}
@@ -160,8 +161,6 @@ func Reproduce(si *StreamInfo) (err error) {
 			deliveryTime := int(time.Since(currenTimeCurrentSeg).Nanoseconds() / (1000 * 1000))
 			thisRunTime := int(time.Since(si.NextRunTimeDownloading).Nanoseconds() / (1000 * 1000))
 
-			logger.Infof("ArrivalTime: %d DeliveryTime: %d ThisRunTime: %d", arrivalTime, deliveryTime, thisRunTime)
-
 			si.NextRunTimeDownloading = time.Now()
 
 			//we want to wait for an initial number of segments before stream begins
@@ -172,7 +171,6 @@ func Reproduce(si *StreamInfo) (err error) {
 
 				//get current buffer
 				currentBuffer := si.BufferLevel - thisRunTime
-				logger.Infoln("current buffer: ", currentBuffer)
 				if currentBuffer >= 0 {
 					//	si.SegmentInformation[segNum].StallTime = 0
 					currentSegInfo.StallTime = 0
@@ -196,19 +194,13 @@ func Reproduce(si *StreamInfo) (err error) {
 			if si.BufferLevel > si.MaxBuffer*1000 {
 				//sleep until maxBuffer level is reached
 				sleepTime := si.BufferLevel - si.MaxBuffer*1000
-				logrus.Warningf("Sleep for %s", time.Duration(sleepTime)*time.Millisecond)
 				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
-
 				si.BufferLevel -= sleepTime
 			}
 			//notSure yet if we need this - base the play out position on the buffer level
-			currentPlayPosition := si.SegmentDurationTotal + (si.SingleSegmentDuration * 1000) - si.BufferLevel
-
-			logger.Warningf("player position %d \n", currentPlayPosition)
 
 			si.SegmentDurationTotal += si.SingleSegmentDuration * 1000
-			//		si.SegmentInformation[segNum].PlayStartPosition = si.SegmentDurationTotal
-			//currentSegInfo.PlayStartPosition = si.SegmentDurationTotal - (si.SingleSegmentDuration * 1000)
+
 			currentSegInfo.PlayStartPosition = si.SegmentDurationTotal
 			si.SegmentInformation[segNum] = currentSegInfo
 
@@ -218,16 +210,17 @@ func Reproduce(si *StreamInfo) (err error) {
 			//TODO select bitrate and switch if needed && save the bitrate from the input segment (less the header info)
 
 			if si.SegmentDurationTotal > si.ActualStreamDuration {
-				logger.Infoln("Finish Reproduction")
+				//logger.Infoln("Finish Reproduction")
 				stopPlay = true
 			} else {
+				repDetails.SegmentsInfo[segNum] = *currentSegInfo
 				si.CurrentSegmentInReproduction += 1
 			}
 		}
 
 	}
 
-	return err
+	return nil
 }
 
 func PrintPlayout(currentTime, initBuffer int, segInfo map[int]*models.SegmentInfo) {
@@ -238,7 +231,7 @@ func PrintPlayout(currentTime, initBuffer int, segInfo map[int]*models.SegmentIn
 		}
 
 		if currentTime >= (segInfo[i].PlayStartPosition+segInfo[initBuffer].PlayStartPosition) && !segInfo[i].Played {
-			logger.Warningf("passing seg to decoder to playout seg %s", segInfo[i].SegmentFileName)
+			//logger.Warningf("passing seg to decoder to playout seg %s", segInfo[i].SegmentFileName)
 			segInfo[i].Played = true
 		}
 	}
