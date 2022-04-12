@@ -11,8 +11,7 @@ import (
 
 func EndWithErr(metrics *models.ReproductionMetrics, t *time.Time, e error) (err error) {
 	metrics.ReprEndTime = time.Now()
-	metrics.CompletedWithError = true
-	metrics.CompleteWithSuccess = false
+	metrics.Status = models.Aborted
 	metrics.ReprDuration = time.Since(*t)
 	metrics.LastErrorReason = e.Error()
 	return err
@@ -20,7 +19,7 @@ func EndWithErr(metrics *models.ReproductionMetrics, t *time.Time, e error) (err
 
 func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorithm string, maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int, nrequest uint64) (err error) {
 	startTimeExecution := time.Now()
-	urlResource := reproductionDetails.Url
+	urlResource := reproductionDetails.ContentUrl
 
 	mpd, fetchInfo, err := models.GetMPDFrom(urlResource)
 	if err != nil {
@@ -99,8 +98,6 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 	segmentInfo[0] = models.NewSegmentInfo()
 	streamInfo.SegmentInformation = segmentInfo
 
-	//startTimeDownloading := time.Now()
-	//nextRunTimeDownloading := time.Now()
 	streamInfo.StartTimeDownloading = time.Now()
 	streamInfo.NextRunTimeDownloading = time.Now()
 	streamInfo.WaitToPlayCount = 0
@@ -109,8 +106,7 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 	case constant.ConventionalAlg:
 		err = models.GetFile(urlResource, target, streamInfo.SegmentInformation[0], segmentDuration)
 		if err != nil {
-			//TODO handle error
-			return err
+			return EndWithErr(reproductionDetails, &startTimeExecution, err)
 		}
 	}
 
@@ -144,11 +140,14 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 			case "conventional":
 				currentSegInfo = models.NewSegmentInfo()
 				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
+				//logger.Infof("[Req#%d] downloaded seg #%d", nreq, segNum)
 				if err != nil {
 					//TODO Retry?
 					logger.Errorf("[Req#%d] Error getting segment %d", nreq, si.CurrentSegmentInReproduction)
-					currentSegInfo.Played = false
-
+					currentSegInfo.NotPlayable = true
+					repDetails.Status = models.Error
+					repDetails.LastErrorReason = err.Error()
+					si.CurrentSegmentInReproduction++
 					continue
 				}
 			}
@@ -211,13 +210,12 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 
 			if si.SegmentDurationTotal > si.ActualStreamDuration {
 				//logger.Infoln("Finish Reproduction")
-				stopPlay = true
+				break
 			} else {
 				repDetails.SegmentsInfo[segNum] = *currentSegInfo
 				si.CurrentSegmentInReproduction += 1
 			}
 		}
-
 	}
 
 	return nil

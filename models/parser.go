@@ -46,6 +46,7 @@ func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMet
 	startTime = time.Now()
 	resp, err := client.Do(req)
 
+	//todo fix invalid access
 	if not200 := resp.StatusCode != http.StatusOK; err != nil || not200 {
 		if not200 {
 			s := fmt.Sprintf("Status code: %s", resp.Status)

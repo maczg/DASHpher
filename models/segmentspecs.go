@@ -41,6 +41,7 @@ type SegmentInfo struct {
 	Yu              float64
 	P1203Kbps       float64
 	SegmentFileName string
+	NotPlayable     bool
 
 	// QoE metrics
 	SegmentRates   []float64
