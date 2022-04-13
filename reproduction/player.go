@@ -52,7 +52,10 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 	}
 
 	//NOTICE ordering representations adpSet[0] (only one atm) from highest (0) to lower(n-1) - goDASH compliant
-	mpd.ReverseRepr(urlResource)
+	err = mpd.ReverseRepr(urlResource)
+	if err != nil {
+		return EndWithErr(reproductionDetails, &startTimeExecution, err)
+	}
 
 	//omitted baseUrl := is for byteRange
 	totalVideoDuration,

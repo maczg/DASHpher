@@ -215,7 +215,7 @@ func (m *MPD) GetBandWidths() (bandwidthList []int) {
 }
 
 //ReverseRepr order representation of first AdaptionSet from the highest Resolution to the lower
-func (m *MPD) ReverseRepr(url string) {
+func (m *MPD) ReverseRepr(url string) (err error) {
 	// get the current adaptation set, number of representations and min and max index based on max resolution height
 	mpdReprLength := len(m.Periods[0].AdaptationSet[0].Representation)
 	lowestBandWidth := m.Periods[0].AdaptationSet[0].Representation[0].BandWidth
@@ -225,10 +225,11 @@ func (m *MPD) ReverseRepr(url string) {
 	// then reverse the represenstions
 	if lowestBandWidth < highestBandWidth {
 		//TODO fix me - we can reduce one call working with pointer to reorder repr
-		r, _, _ := GetMPDFrom(url)
-
+		r, _, err := GetMPDFrom(url)
+		if err != nil {
+			return err
+		}
 		// create it with content
-
 		// loop over the existing list and reverse the representations
 		i := 0
 		for j := mpdReprLength - 1; j >= 0; j-- {
@@ -242,6 +243,7 @@ func (m *MPD) ReverseRepr(url string) {
 		//reset the structlist to the new rates
 		m.Periods[0].AdaptationSet[0] = r.Periods[0].AdaptationSet[0]
 	}
+	return nil
 }
 
 //GetFullStreamHeader - return header file for current videoclip - FULL indicate for the full profile
@@ -295,14 +297,15 @@ func GetFile(originalUrl, fileURI string, info *SegmentInfo, segmentDuration int
 
 	startTime = time.Now()
 	resp, err := client.Do(req)
-
-	if not200 := resp.StatusCode != http.StatusOK; err != nil || not200 {
-		if not200 {
-			s := fmt.Sprintf("Status code: %s", resp.Status)
-			return errors.New(s)
-		}
+	if err != nil {
 		return err
 	}
+
+	if resp.StatusCode != http.StatusOK {
+		s := fmt.Sprintf("Status code: %s", resp.Status)
+		return errors.New(s)
+	}
+
 	defer resp.Body.Close()
 
 	//parse resp in mpd
