@@ -10,9 +10,7 @@ import (
 func NewCustomHttp() (client *http.Client) {
 	//Setting timeout custom transport layer
 	tr := http.Transport{
-		Proxy:       nil,
-		DialContext: nil,
-		DialTLSContext: (&net.Dialer{
+		DialContext: (&net.Dialer{
 			Timeout: 0,
 		}).DialContext,
 		TLSClientConfig:        &tls.Config{InsecureSkipVerify: true},

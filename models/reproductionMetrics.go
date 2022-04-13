@@ -40,6 +40,7 @@ type ReproductionMetrics struct {
 
 	Status            RepStatus
 	ErrorCount        int
+	StallCount        int
 	SegmentErrorCount int
 	LastErrorReason   string
 }

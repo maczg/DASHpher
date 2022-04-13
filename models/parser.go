@@ -3,6 +3,7 @@ package models
 import (
 	"encoding/xml"
 	"errors"
+	"fmt"
 	"github.com/massimo-gollo/DASHpher/network"
 	"io/ioutil"
 	"net/http"
@@ -29,6 +30,15 @@ func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMet
 	url := strings.TrimSpace(requestedUrl)
 	//Get Custom http client - ulimit timeouts
 	client := network.NewCustomHttp()
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		//if redirected prints
+		//	INFO[2022-04-13 22:23:35] redirected - http://cloud.gollo1.particles.dieei.unict.it/vms/videos/624d99627f1af072aead0c47
+		//	INFO[2022-04-13 22:23:35] redirected - http://cloud.gollo1.particles.dieei.unict.it/videofiles/624d99627f1af072aead0c47/video.mpd
+
+		logger.Infof("redirected - %s", req.URL.String())
+
+		return nil
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
@@ -49,10 +59,13 @@ func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMet
 		return nil, &fetchingInfo, err
 	}
 
+	if resp.StatusCode == http.StatusFound { //status code 302
+		fmt.Println(resp.Location())
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return nil, &fetchingInfo, errors.New("NOT 200")
 	}
-
 	defer resp.Body.Close()
 
 	//Resolve MPD

@@ -126,101 +126,102 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 
 func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetrics) (err error) {
 
-	stopPlay := false
-
 	var currentSegInfo *models.SegmentInfo
-
 	for si.CurrentSegmentInReproduction <= si.ActualTotalSegmentToStream {
 		segNum := si.CurrentSegmentInReproduction
 
-		if !stopPlay {
-			si.CurrentURLSegToStream =
-				models.GetNextSegUrl(segNum, si.MPD, si.CurrentRepIdx)
+		si.CurrentURLSegToStream =
+			models.GetNextSegUrl(segNum, si.MPD, si.CurrentRepIdx)
 
-			///StartTime for this seg
-			currenTimeCurrentSeg := time.Now()
-			switch si.AdaptionAlgorithm {
-			case "conventional":
-				currentSegInfo = models.NewSegmentInfo()
-				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
-				//logger.Infof("[Req#%d] downloaded seg #%d", nreq, segNum)
-				if err != nil {
-					//TODO Retry?
-					logger.Errorf("[Req#%d] Error getting segment %d", nreq, si.CurrentSegmentInReproduction)
-					currentSegInfo.NotPlayable = true
-					repDetails.Status = models.Error
-					repDetails.LastErrorReason = err.Error()
-					si.CurrentSegmentInReproduction++
-					continue
-				}
-			}
-
-			//SegInfo[num].SegSize settet in GetFile
-			si.CurrentSegSize = currentSegInfo.SegmentSize
-
-			//compute times
-			arrivalTime := int(time.Since(si.StartTimeDownloading).Nanoseconds() / (1000 * 1000))
-			deliveryTime := int(time.Since(currenTimeCurrentSeg).Nanoseconds() / (1000 * 1000))
-			thisRunTime := int(time.Since(si.NextRunTimeDownloading).Nanoseconds() / (1000 * 1000))
-
-			si.NextRunTimeDownloading = time.Now()
-
-			//we want to wait for an initial number of segments before stream begins
-
-			if si.WaitToPlayCount >= si.InitBuffer {
-				// * print the play_out logs only when the current time is >= play_out time
-				PrintPlayout(arrivalTime, si.InitBuffer, si.SegmentInformation)
-
-				//get current buffer
-				currentBuffer := si.BufferLevel - thisRunTime
-				if currentBuffer >= 0 {
-					//	si.SegmentInformation[segNum].StallTime = 0
-					currentSegInfo.StallTime = 0
-				} else {
-					/*logger.Infoln("current buffer: ", currentBuffer)*/
-					//si.SegmentInformation[segNum].StallTime = currentBuffer
-					currentSegInfo.StallTime = currentBuffer
-				}
-
-				// To have the bufferLevel we take the max between the remaining buffer and 0, we add the duration of the segment we downloaded
-				si.BufferLevel = utils.Max(si.BufferLevel-thisRunTime, 0) + (si.SingleSegmentDuration * 1000)
-				si.WaitToPlayCount += 1
-			} else {
-				// add to the current buffer before we start to play
-				si.BufferLevel += si.SingleSegmentDuration * 1000
-				// increment the waitToPlayCounter
-				si.WaitToPlayCount += 1
-			}
-
-			//compare buffer level (millisec, duration of seg*1000) with MaxBuffer (from sec to millis)
-			if si.BufferLevel > si.MaxBuffer*1000 {
-				//sleep until maxBuffer level is reached
-				sleepTime := si.BufferLevel - si.MaxBuffer*1000
-				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
-				si.BufferLevel -= sleepTime
-			}
-			//notSure yet if we need this - base the play out position on the buffer level
-
-			si.SegmentDurationTotal += si.SingleSegmentDuration * 1000
-
-			currentSegInfo.PlayStartPosition = si.SegmentDurationTotal
-			si.SegmentInformation[segNum] = currentSegInfo
-
-			throughput := algo.CalculateThroughput(si.CurrentSegSize, deliveryTime)
-			_ = throughput
-
-			//TODO select bitrate and switch if needed && save the bitrate from the input segment (less the header info)
-
-			if si.SegmentDurationTotal > si.ActualStreamDuration {
-				//logger.Infoln("Finish Reproduction")
-				break
-			} else {
-				repDetails.SegmentsInfo[segNum] = *currentSegInfo
-				si.CurrentSegmentInReproduction += 1
+		///StartTime for this seg
+		currenTimeCurrentSeg := time.Now()
+		switch si.AdaptionAlgorithm {
+		case "conventional":
+			currentSegInfo = models.NewSegmentInfo()
+			err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
+			if err != nil {
+				//TODO Retry?
+				logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
+				currentSegInfo.NotPlayable = true
+				repDetails.Status = models.Error
+				repDetails.LastErrorReason = err.Error()
+				si.CurrentSegmentInReproduction++
+				continue
 			}
 		}
-	}
 
+		//SegInfo[num].SegSize settet in GetFile
+		si.CurrentSegSize = currentSegInfo.SegmentSize
+
+		//compute times
+		arrivalTime := int(time.Since(si.StartTimeDownloading).Nanoseconds() / (1000 * 1000))
+		deliveryTime := int(time.Since(currenTimeCurrentSeg).Nanoseconds() / (1000 * 1000))
+		thisRunTime := int(time.Since(si.NextRunTimeDownloading).Nanoseconds() / (1000 * 1000))
+
+		//fmt.Println("ArrivalTime: ", arrivalTime)
+		//fmt.Println("ThisRunTine: ", thisRunTime)
+
+		si.NextRunTimeDownloading = time.Now()
+
+		//we want to wait for an initial number of segments before stream begins
+		if si.WaitToPlayCount >= si.InitBuffer {
+			// * print the play_out logs only when the current time is >= play_out time
+			//TODO notice, at the moment function return before print all segment playout
+			PrintPlayout(arrivalTime, si.InitBuffer, si.SegmentInformation)
+
+			//get current buffer
+			currentBuffer := si.BufferLevel - thisRunTime
+			if currentBuffer >= 0 {
+				//	si.SegmentInformation[segNum].StallTime = 0
+				currentSegInfo.StallTime = 0
+			} else {
+				/*logger.Infoln("current buffer: ", currentBuffer)*/
+				//si.SegmentInformation[segNum].StallTime = currentBuffer
+				currentSegInfo.StallTime = currentBuffer
+				repDetails.StallCount++
+
+			}
+
+			// To have the bufferLevel we take the max between the remaining buffer and 0, we add the duration of the segment we downloaded
+			si.BufferLevel = utils.Max(si.BufferLevel-thisRunTime, 0) + (si.SingleSegmentDuration * 1000)
+			si.WaitToPlayCount += 1
+		} else {
+			// add to the current buffer before we start to play
+			si.BufferLevel += si.SingleSegmentDuration * 1000
+			// increment the waitToPlayCounter
+			si.WaitToPlayCount += 1
+		}
+
+		//compare buffer level (millisec, duration of seg*1000) with MaxBuffer (from sec to millis)
+		if si.BufferLevel > si.MaxBuffer*1000 {
+			//sleep until maxBuffer level is reached
+			sleepTime := si.BufferLevel - si.MaxBuffer*1000
+			time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+			si.BufferLevel -= sleepTime
+		}
+		//notSure yet if we need this - base the play out position on the buffer level
+
+		si.SegmentDurationTotal += si.SingleSegmentDuration * 1000
+
+		currentSegInfo.PlayStartPosition = si.SegmentDurationTotal
+		si.SegmentInformation[segNum] = currentSegInfo
+
+		throughput := algo.CalculateThroughput(si.CurrentSegSize, deliveryTime)
+		_ = throughput
+
+		//TODO select bitrate and switch if needed && save the bitrate from the input segment (less the header info)
+
+		if si.SegmentDurationTotal > si.ActualStreamDuration {
+			//logger.Infoln("Finish Reproduction")
+			break
+		} else {
+			repDetails.SegmentsInfo[segNum] = *currentSegInfo
+			si.CurrentSegmentInReproduction += 1
+		}
+	}
+	if repDetails.StallCount > 10 {
+		repDetails.Status = models.Error
+	}
 	return nil
 }
 

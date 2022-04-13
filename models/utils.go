@@ -8,6 +8,7 @@ import (
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/network"
 	"github.com/massimo-gollo/DASHpher/utils"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptrace"
@@ -298,6 +299,7 @@ func GetFile(originalUrl, fileURI string, info *SegmentInfo, segmentDuration int
 	startTime = time.Now()
 	resp, err := client.Do(req)
 	if err != nil {
+		logrus.Errorf("error %s", err.Error())
 		return err
 	}
 
@@ -311,6 +313,7 @@ func GetFile(originalUrl, fileURI string, info *SegmentInfo, segmentDuration int
 	//parse resp in mpd
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
+		logrus.Errorf("body error: %s", err.Error())
 		return err
 	}
 
