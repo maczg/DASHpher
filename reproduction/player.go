@@ -21,12 +21,13 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 	startTimeExecution := time.Now()
 	urlResource := reproductionDetails.ContentUrl
 
-	mpd, fetchInfo, err := models.GetMPDFrom(urlResource)
+	mpd, fetchInfo, err := models.GetMPDFrom(&urlResource)
 	if err != nil {
 		//TODO handle properly
 		return EndWithErr(reproductionDetails, &startTimeExecution, err)
 	}
 	reproductionDetails.FetchMpdInfo = *fetchInfo
+	reproductionDetails.SegmentsInfo = make(map[int]models.SegmentInfo)
 
 	//TODO - check if MaxBuffer < MBT (minimum buffer time from mpd)
 
@@ -56,6 +57,7 @@ func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorit
 	if err != nil {
 		return EndWithErr(reproductionDetails, &startTimeExecution, err)
 	}
+	reproductionDetails.MPD = *mpd
 
 	//omitted baseUrl := is for byteRange
 	totalVideoDuration,

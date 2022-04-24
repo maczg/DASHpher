@@ -226,7 +226,7 @@ func (m *MPD) ReverseRepr(url string) (err error) {
 	// then reverse the represenstions
 	if lowestBandWidth < highestBandWidth {
 		//TODO fix me - we can reduce one call working with pointer to reorder repr
-		r, _, err := GetMPDFrom(url)
+		r, _, err := GetMPDFrom(&url)
 		if err != nil {
 			return err
 		}

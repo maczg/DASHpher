@@ -25,9 +25,9 @@ func ParseMPDFrom(mpdBody *[]byte) (mpd *MPD, err error) {
 }
 
 //GetMPDFrom - get mpd from requested url
-func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMetadata, err error) {
+func GetMPDFrom(requestedUrl *string) (mpd *MPD, requestMetadata *network.FileMetadata, err error) {
 
-	url := strings.TrimSpace(requestedUrl)
+	url := strings.TrimSpace(*requestedUrl)
 	//Get Custom http client - ulimit timeouts
 	client := network.NewCustomHttp()
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
@@ -36,7 +36,7 @@ func GetMPDFrom(requestedUrl string) (mpd *MPD, requestMetadata *network.FileMet
 		//	INFO[2022-04-13 22:23:35] redirected - http://cloud.gollo1.particles.dieei.unict.it/videofiles/624d99627f1af072aead0c47/video.mpd
 
 		logger.Infof("redirected - %s", req.URL.String())
-
+		*requestedUrl = req.URL.String()
 		return nil
 	}
 
