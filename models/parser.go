@@ -31,11 +31,6 @@ func GetMPDFrom(requestedUrl *string) (mpd *MPD, requestMetadata *network.FileMe
 	//Get Custom http client - ulimit timeouts
 	client := network.NewCustomHttp()
 	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		//if redirected prints
-		//	INFO[2022-04-13 22:23:35] redirected - http://cloud.gollo1.particles.dieei.unict.it/vms/videos/624d99627f1af072aead0c47
-		//	INFO[2022-04-13 22:23:35] redirected - http://cloud.gollo1.particles.dieei.unict.it/videofiles/624d99627f1af072aead0c47/video.mpd
-
-		logger.Infof("redirected - %s", req.URL.String())
 		*requestedUrl = req.URL.String()
 		return nil
 	}

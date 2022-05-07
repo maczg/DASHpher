@@ -17,7 +17,11 @@ func EndWithErr(metrics *models.ReproductionMetrics, t *time.Time, e error) (err
 	return err
 }
 
-func Stream(reproductionDetails *models.ReproductionMetrics, codec, adaptAlgorithm string, maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int, nrequest uint64) (err error) {
+func Stream(reproductionDetails *models.ReproductionMetrics,
+	codec, adaptAlgorithm string,
+	maxHeightRes, requestedStreamDuration, initBuffSeconds, MaxBufferSeconds int,
+	nrequest uint64) (err error) {
+
 	startTimeExecution := time.Now()
 	urlResource := reproductionDetails.ContentUrl
 
