@@ -58,9 +58,6 @@ func Stream(reproductionDetails *models.ReproductionMetrics,
 
 	//NOTICE ordering representations adpSet[0] (only one atm) from highest (0) to lower(n-1) - goDASH compliant
 	err = mpd.ReverseRepr(urlResource)
-	if err != nil {
-		return EndWithErr(reproductionDetails, &startTimeExecution, err)
-	}
 	reproductionDetails.MPD = *mpd
 
 	//omitted baseUrl := is for byteRange
@@ -118,11 +115,11 @@ func Stream(reproductionDetails *models.ReproductionMetrics,
 			return EndWithErr(reproductionDetails, &startTimeExecution, err)
 		}
 	}
+	reproductionDetails.TotalByteDownloaded += streamInfo.SegmentInformation[0].SegmentSize
 
 	//all set to init gettin segment -> Reproduce
 	streamInfo.CurrentSegmentInReproduction += 1
 	streamInfo.BufferLevel = 0
-
 	reproductionDetails.SegmentsInfo[0] = *segmentInfo[0]
 
 	err = Reproduce(&streamInfo, nrequest, reproductionDetails)
@@ -131,7 +128,6 @@ func Stream(reproductionDetails *models.ReproductionMetrics,
 }
 
 func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetrics) (err error) {
-
 	var currentSegInfo *models.SegmentInfo
 	for si.CurrentSegmentInReproduction <= si.ActualTotalSegmentToStream {
 		segNum := si.CurrentSegmentInReproduction
@@ -146,18 +142,22 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 			currentSegInfo = models.NewSegmentInfo()
 			err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
 			if err != nil {
-				//TODO Retry?
-				logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
-				currentSegInfo.NotPlayable = true
-				repDetails.Status = models.Error
-				repDetails.LastErrorReason = err.Error()
-				si.CurrentSegmentInReproduction++
-				continue
+				time.Sleep(5 * time.Second)
+				//retry
+				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
+				if err != nil {
+					logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
+					repDetails.Status = models.Error
+					repDetails.LastErrorReason = err.Error()
+					si.CurrentSegmentInReproduction++
+					continue
+				}
 			}
 		}
 
 		//SegInfo[num].SegSize settet in GetFile
 		si.CurrentSegSize = currentSegInfo.SegmentSize
+		repDetails.TotalByteDownloaded += currentSegInfo.SegmentSize
 
 		//compute times
 		arrivalTime := int(time.Since(si.StartTimeDownloading).Nanoseconds() / (1000 * 1000))
@@ -185,7 +185,6 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 				//si.SegmentInformation[segNum].StallTime = currentBuffer
 				currentSegInfo.StallTime = currentBuffer
 				repDetails.StallCount++
-
 			}
 
 			// To have the bufferLevel we take the max between the remaining buffer and 0, we add the duration of the segment we downloaded
@@ -224,9 +223,6 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 			repDetails.SegmentsInfo[segNum] = *currentSegInfo
 			si.CurrentSegmentInReproduction += 1
 		}
-	}
-	if repDetails.StallCount > 10 {
-		repDetails.Status = models.Error
 	}
 	return nil
 }

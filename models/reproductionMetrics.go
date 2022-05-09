@@ -28,11 +28,12 @@ const (
 )
 
 type ReproductionMetrics struct {
-	ReproductionID uint64
-	ContentUrl     string
-	FetchMpdInfo   network.FileMetadata
-	MPD            MPD
-	SegmentsInfo   map[int]SegmentInfo
+	ReproductionID      uint64
+	ContentUrl          string
+	FetchMpdInfo        network.FileMetadata
+	MPD                 MPD
+	SegmentsInfo        map[int]SegmentInfo
+	TotalByteDownloaded int
 
 	ReprStartTime time.Time
 	ReprEndTime   time.Time
