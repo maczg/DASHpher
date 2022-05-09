@@ -221,28 +221,12 @@ func (m *MPD) ReverseRepr(url string) (err error) {
 	mpdReprLength := len(m.Periods[0].AdaptationSet[0].Representation)
 	lowestBandWidth := m.Periods[0].AdaptationSet[0].Representation[0].BandWidth
 	highestBandWidth := m.Periods[0].AdaptationSet[0].Representation[mpdReprLength-1].BandWidth
-
 	// if the MPD is reversed (index 0 for represenstion is the lowest rate)
 	// then reverse the represenstions
 	if lowestBandWidth < highestBandWidth {
-		//TODO fix me - we can reduce one call working with pointer to reorder repr
-		r, _, err := GetMPDFrom(&url)
-		if err != nil {
-			return err
+		for i, j := 0, mpdReprLength-1; i < j; i, j = i+1, j-1 {
+			m.Periods[0].AdaptationSet[0].Representation[i], m.Periods[0].AdaptationSet[0].Representation[j] = m.Periods[0].AdaptationSet[0].Representation[j], m.Periods[0].AdaptationSet[0].Representation[i]
 		}
-		// create it with content
-		// loop over the existing list and reverse the representations
-		i := 0
-		for j := mpdReprLength - 1; j >= 0; j-- {
-			// save the lowest index of structList in the highest index of reversedStructList
-			r.Periods[0].AdaptationSet[0].Representation[j] = m.Periods[0].AdaptationSet[0].Representation[i]
-			// reset the ID number of reversedStructList
-			r.Periods[0].AdaptationSet[0].Representation[j].ID = strconv.Itoa(j + 1)
-			// increment i
-			i = i + 1
-		}
-		//reset the structlist to the new rates
-		m.Periods[0].AdaptationSet[0] = r.Periods[0].AdaptationSet[0]
 	}
 	return nil
 }
