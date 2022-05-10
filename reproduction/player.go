@@ -146,7 +146,7 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 				logrus.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
 				repDetails.Status = models.Error
 				repDetails.LastErrorReason = err.Error()
-				return
+				return err
 			}
 		}
 
