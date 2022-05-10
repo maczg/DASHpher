@@ -5,6 +5,7 @@ import (
 	"github.com/massimo-gollo/DASHpher/constant"
 	"github.com/massimo-gollo/DASHpher/models"
 	"github.com/massimo-gollo/DASHpher/utils"
+	"github.com/sirupsen/logrus"
 	"strings"
 	"time"
 )
@@ -142,10 +143,10 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 			currentSegInfo = models.NewSegmentInfo()
 			err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
 			if err != nil {
-				logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
+				logrus.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
 				repDetails.Status = models.Error
 				repDetails.LastErrorReason = err.Error()
-				break
+				return
 			}
 		}
 

@@ -94,7 +94,7 @@ func (m *MPD) ParseDurationOf(duration string) (timeSeconds *int, err error) {
 		// if there are hours, convert to seconds
 		i3, err := strconv.Atoi(streamDurationH)
 		if err != nil {
-			logger.Errorf("Error parsing hours")
+			logrus.Errorf("Error parsing hours")
 			return nil, err
 		}
 		if i3 > 0 {
@@ -115,7 +115,7 @@ func (m *MPD) ParseDurationOf(duration string) (timeSeconds *int, err error) {
 		// if there are minutes, convert to seconds
 		i1, err := strconv.Atoi(m[0])
 		if err != nil {
-			logger.Errorf("Error parsing minutes")
+			logrus.Errorf("Error parsing minutes")
 			return nil, err
 		}
 		if i1 > 0 {
@@ -131,7 +131,7 @@ func (m *MPD) ParseDurationOf(duration string) (timeSeconds *int, err error) {
 		s := strings.Split(streamDuration, ".")
 		i2, err := strconv.Atoi(s[0])
 		if err != nil {
-			logger.Errorf("Error parsing seconds")
+			logrus.Errorf("Error parsing seconds")
 			return nil, err
 		}
 		if i2 > 0 {
