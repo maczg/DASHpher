@@ -142,15 +142,10 @@ func Reproduce(si *StreamInfo, nreq uint64, repDetails *models.ReproductionMetri
 			currentSegInfo = models.NewSegmentInfo()
 			err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
 			if err != nil {
-				time.Sleep(5 * time.Second)
-				//retry
-				err := models.GetFile(si.UrlResource, si.CurrentURLSegToStream, currentSegInfo, si.SingleSegmentDuration)
-				if err != nil {
-					logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
-					repDetails.Status = models.Error
-					repDetails.LastErrorReason = err.Error()
-					break
-				}
+				logger.Errorf("[Req#%d] Error getting segment %d reason: %s", nreq, si.CurrentSegmentInReproduction, err.Error())
+				repDetails.Status = models.Error
+				repDetails.LastErrorReason = err.Error()
+				break
 			}
 		}
 

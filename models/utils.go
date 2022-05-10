@@ -338,6 +338,6 @@ func GetFile(originalUrl, fileURI string, info *SegmentInfo, segmentDuration int
 	_ = kbpsFloatStringVal
 
 	info.SegmentSize = segSize
-
+	info.P1203Kbps = kbpsFloat
 	return nil
 }
